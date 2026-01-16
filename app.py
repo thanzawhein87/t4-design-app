@@ -19,7 +19,7 @@ if "assets" not in st.session_state:
 # --- SIDEBAR API KEY ---
 with st.sidebar:
     st.title("⚙️ Configuration")
-    api_key = st.text_input("Gemini API Key", type="password")
+    api_key = st.text_input("AIzaSyBQv4r80COhFLgO9uPtQEr3ZJV26ygvF-4", type="password")
     if api_key:
         genai.configure(api_key=api_key)
     else:
