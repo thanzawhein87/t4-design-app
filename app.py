@@ -1,175 +1,306 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+import google.generativeai as genai
+from PIL import Image
 import io
-import requests
-import random
-import os
 
-# --- 1. Page Configuration ---
-st.set_page_config(page_title="T4 Pro Studio", layout="wide", page_icon="🎨")
+# --- CONFIG & SETUP ---
+st.set_page_config(page_title="AdGenius AI (Streamlit)", layout="wide")
 
-# --- 2. Helper Functions ---
-def generate_image(prompt, negative_prompt, width, height, seed):
-    """Advanced Image Generation"""
-    # Prompt နှင့် Negative Prompt ကို ပေါင်းစပ်ခြင်း
-    full_prompt = f"{prompt} --no {negative_prompt}"
-    formatted_prompt = full_prompt.replace(" ", "%20")
-    
-    # Model = flux (အကောင်းဆုံး quality)
-    url = f"https://image.pollinations.ai/prompt/{formatted_prompt}?width={width}&height={height}&model=flux&seed={seed}&nologo=true"
-    
-    try:
-        response = requests.get(url, timeout=60)
-        if response.status_code == 200:
-            return Image.open(io.BytesIO(response.content))
-        return None
-    except:
-        return None
+# Initialize Session State
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "page" not in st.session_state:
+    st.session_state.page = "dashboard"
+if "scoping" not in st.session_state:
+    st.session_state.scoping = {}
+if "assets" not in st.session_state:
+    st.session_state.assets = {}
 
-# --- 3. SIDEBAR CONTROLS ---
+# --- SIDEBAR API KEY ---
 with st.sidebar:
-    st.header("⚙️ Setting ချိန်ညှိရန်")
-    
-    # A. Size
-    st.subheader("၁။ Size & Layout")
-    ratio_choice = st.selectbox("Size", ("Square (1:1)", "Portrait (9:16)", "Landscape (16:9)"))
-    
-    if "Square" in ratio_choice: img_w, img_h = 1080, 1080
-    elif "Portrait" in ratio_choice: img_w, img_h = 768, 1344 
-    else: img_w, img_h = 1280, 720
-
-    # B. Text
-    st.subheader("၂။ မြန်မာစာသား")
-    font_size = st.slider("Font Size", 30, 200, 80)
-    text_color = st.color_picker("Text Color", "#FFFFFF")
-    text_x = st.slider("Move X (Left/Right)", -500, 500, 0)
-    text_y = st.slider("Move Y (Up/Down)", -500, 500, 0)
-
-    st.divider()
-
-    # C. Advanced AI Control (Feature အသစ်)
-    with st.expander("🛠️ Advanced AI Settings (အဆင့်မြင့်)", expanded=False):
-        st.caption("ပုံစံတူကို ပြန်လိုချင်ရင် Seed နံပါတ်ကို မှတ်ထားပါ")
-        # Random Seed သို့မဟုတ် Fixed Seed
-        use_random_seed = st.checkbox("Random Seed (ပုံစံအသစ်ချည်း ထုတ်မည်)", value=True)
-        if use_random_seed:
-            seed_input = random.randint(1, 99999)
-        else:
-            seed_input = st.number_input("Seed Number (ပုံစံတူ ထိန်းရန်)", value=42, step=1)
-            
-        st.caption("မပါစေချင်သော အရာများ (Negative Prompt)")
-        neg_prompt = st.text_area("Negative Prompt", "blur, ugly, deformed, text, logo, watermark, low quality, bad hands", height=70)
-
-    st.divider()
-
-    # D. Logo
-    logo_file = st.file_uploader("Logo (PNG)", type=['png', 'jpg'])
-    if logo_file:
-        logo_size = st.slider("Logo Size", 50, 400, 150)
-        logo_x = st.slider("Logo X", 0, img_w, int(img_w - 200)) 
-        logo_y = st.slider("Logo Y", 0, img_h, 50)
-
-# --- 4. MAIN PAGE ---
-st.title("🛍️ T4 Pro AI Design Studio")
-
-col1, col2 = st.columns([1, 1.5])
-
-with col1:
-    st.info("အဆင့် (၁) - ပုံစံကြမ်း ရွေးချယ်ပါ")
-    
-    # Category Selection
-    category = st.selectbox(
-        "Product Category:",
-        ("Cosmetic (အလှကုန်)", "Food (အစားအသောက်)", "Fashion (ဖက်ရှင်)", "Gadget (နည်းပညာ)", "Furniture (ပရိဘောဂ)")
-    )
-    
-    # Auto-Prompt Logic
-    base_prompt = ""
-    if category == "Cosmetic (အလှကုန်)":
-        item = st.text_input("Item Name", "Luxury Perfume")
-        theme = st.selectbox("Theme", ("Floral Garden", "Water Splash", "Minimal Studio", "Golden Luxury"))
-        if theme == "Floral Garden": base_prompt = f"Professional product photo of {item}, surrounded by soft pink flowers, bokeh nature background, sunlight, 8k"
-        elif theme == "Water Splash": base_prompt = f"Fresh {item}, dynamic water splash, blue background, refreshing, high speed photography"
-        elif theme == "Minimal Studio": base_prompt = f"Clean studio shot of {item}, pastel background, soft shadows, minimalist"
-        else: base_prompt = f"Luxurious {item} on black podium, gold dust, elegant lighting, premium ad"
-
-    elif category == "Food (အစားအသောက်)":
-        item = st.text_input("Item Name", "Burger")
-        base_prompt = f"Delicious {item} on wooden table, restaurant lighting, steam rising, mouth watering, 8k food photography"
-
-    elif category == "Fashion (ဖက်ရှင်)":
-        item = st.text_input("Item Name", "Silk Dress")
-        base_prompt = f"Fashion model wearing {item}, street style, city background, golden hour lighting, magazine quality"
-        
+    st.title("⚙️ Configuration")
+    api_key = st.text_input("Gemini API Key", type="password")
+    if api_key:
+        genai.configure(api_key=api_key)
     else:
-        item = st.text_input("Item Name", "Modern Chair")
-        base_prompt = f"Interior design shot of {item}, modern living room, soft sunlight, architectural digest style"
+        st.warning("Please enter your API Key to generate images.")
 
-    # --- THE EDITABLE PROMPT FIELD (အဓိက ပြင်ဆင်ချက်) ---
-    st.warning("အဆင့် (၂) - AI ကို ခိုင်းမည့်စာ (စိတ်ကြိုက် ပြင်နိုင်သည်)")
-    final_prompt = st.text_area("Prompt Editor (လိုချင်သလို ပြင်ရေးပါ)", base_prompt, height=120)
+# --- HELPER FUNCTIONS ---
+
+def get_image_bytes(uploaded_file):
+    if uploaded_file is None:
+        return None
+    return Image.open(uploaded_file)
+
+def build_prompt(scoping, assets, variant):
+    # Determine flags
+    has_model = scoping.get('modelRole') != 'None' and assets.get('model_img')
+    has_product = scoping.get('productRole') != 'None' and assets.get('product_img')
+    has_building = scoping.get('buildingRole') != 'None' and assets.get('building_img')
+    has_fantasy = scoping.get('fantasyRole') != 'None' and assets.get('fantasy_img')
+    has_main_ref = assets.get('main_ref') is not None
+
+    # 1. Scene Construction
+    scene_desc = f"Create a professional advertising image for the topic: '{scoping.get('topic', 'Ad')}'.\n\nKEY ELEMENTS TO INCLUDE:\n"
     
-    st.success("အဆင့် (၃) - မြန်မာစာသား ထည့်ပါ")
-    overlay_text = st.text_area("Overlay Text", "သဘာဝအလှ\nအကောင်းဆုံးရွေးချယ်မှု")
+    if scoping.get('modelRole') != 'None':
+        scene_desc += f"- MODEL: {scoping.get('modelCount')} {scoping.get('modelGender')} model(s) ({scoping.get('modelRole')} role).{ ' (Reference image provided)' if has_model else ''}\n"
+    if scoping.get('productRole') != 'None':
+        scene_desc += f"- PRODUCT: {scoping.get('productCount')} item(s) ({scoping.get('productRole')} role).{ ' (Reference image provided)' if has_product else ''}\n"
+    if scoping.get('buildingRole') != 'None':
+        scene_desc += f"- ARCHITECTURE: {scoping.get('buildingCount')} structure(s) ({scoping.get('buildingRole')} role).{ ' (Reference image provided)' if has_building else ''}\n"
+    if scoping.get('fantasyRole') != 'None':
+        scene_desc += f"- FANTASY/BG: {scoping.get('fantasyCount')} element(s) ({scoping.get('fantasyRole')} role).{ ' (Reference image provided)' if has_fantasy else ''}\n"
+
+    if scoping.get('textRole') != 'None':
+        scene_desc += f"- TEXT LAYOUT: Leave space for {scoping.get('textLineCount')} lines of text. Primary focus on line {scoping.get('textPrimaryLineIdx') + 1}.\n"
+
+    # 2. Style Instruction
+    style_instruction = ""
+    if variant == 'Standard':
+        style_instruction = "STYLE: Standard Commercial Photography. High-key lighting, clean background, eye-level perspective, sharp focus on the product/subject."
+    elif variant == 'Uncommon':
+        style_instruction = "STYLE: Dynamic Creative. Use a Dutch Angle, low angle, or unexpected framing. Dramatic lighting, high contrast."
+    elif variant == 'Distance':
+        style_instruction = "STYLE: Wide Establishing Shot. The subject is small in frame, showing the vast environment. Cinematic landscape composition."
+    elif variant == 'Abstract':
+        style_instruction = "STYLE: Surreal/Abstract Art. Dreamlike quality, floating elements, exaggerated colors, artistic interpretation."
+
+    # 3. Final Assembly
+    prompt = f"""
+    {scene_desc}
     
-    generate_btn = st.button("🚀 Generate Design", type="primary", use_container_width=True)
+    { "VISUAL REFERENCE: Please loosely follow the composition and vibe of the provided Style Reference image." if has_main_ref else ""}
     
-    # Seed ကို ပြသပေးခြင်း (မှတ်ထားလို့ရအောင်)
-    if not use_random_seed:
-        st.caption(f"Current Seed: {seed_input}")
+    {style_instruction}
+    
+    {f"ADDITIONAL NOTES: {assets.get('specialInstructions')}" if assets.get('specialInstructions') else ""}
+    
+    REQUIREMENTS: Photorealistic, High Resolution (4k), Advertising Standard.
+    """
+    return prompt
 
-with col2:
-    if generate_btn:
-        with st.spinner("Creating your masterpiece..."):
-            
-            # Use the edited 'final_prompt' and 'seed_input'
-            base_image = generate_image(final_prompt, neg_prompt, img_w, img_h, seed_input)
-            
-            if base_image:
-                draw = ImageDraw.Draw(base_image)
-                W, H = base_image.size
-                
-                # Logo
-                if logo_file:
-                    try:
-                        logo = Image.open(logo_file).convert("RGBA")
-                        aspect = logo.width / logo.height
-                        new_h = int(logo_size / aspect)
-                        logo = logo.resize((logo_size, new_h))
-                        base_image.paste(logo, (logo_x, logo_y), logo)
-                    except: pass
+def generate_image(scoping, assets, variant):
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash-image')
+        prompt = build_prompt(scoping, assets, variant)
+        
+        # Prepare inputs (Prompt + Images)
+        inputs = [prompt]
+        
+        # Attach Images if they exist
+        if scoping.get('modelRole') != 'None' and assets.get('model_img'): inputs.append(assets['model_img'])
+        if scoping.get('productRole') != 'None' and assets.get('product_img'): inputs.append(assets['product_img'])
+        if scoping.get('buildingRole') != 'None' and assets.get('building_img'): inputs.append(assets['building_img'])
+        if scoping.get('fantasyRole') != 'None' and assets.get('fantasy_img'): inputs.append(assets['fantasy_img'])
+        if assets.get('main_ref'): inputs.append(assets['main_ref'])
 
-                # Text
-                try:
-                    if os.path.exists("mmrtext.ttf"): font = ImageFont.truetype("mmrtext.ttf", font_size)
-                    else: font = ImageFont.truetype("C:/Windows/Fonts/mmrtext.ttf", font_size)
-                except: font = ImageFont.load_default()
+        # Aspect Ratio Map
+        ratio_map = {
+            '1:1': '1:1',
+            '9:16': '9:16',
+            '16:9': '16:9',
+            '3:4': '3:4'
+        }
+        
+        response = model.generate_content(
+            inputs,
+            generation_config=genai.types.GenerationConfig(
+                candidate_count=1,
+            )
+            # Note: Aspect ratio param in Python SDK might vary slightly depending on version, 
+            # usually handled via prompt or specific config param if supported by 2.5 flash.
+        )
+        
+        return response.parts[0].image
+    except Exception as e:
+        st.error(f"Error generating {variant}: {e}")
+        return None
 
-                lines = overlay_text.split('\n')
-                try: line_h = font.getbbox("hg")[3] - font.getbbox("hg")[1] + (font_size * 0.4)
-                except: line_h = font_size + 10
-                
-                total_h = line_h * len(lines)
-                start_y = ((H - total_h) / 2) + text_y
+# --- PAGES ---
 
-                for line in lines:
-                    try: line_w = font.getlength(line)
-                    except: line_w = len(line) * (font_size/2)
-                    start_x = ((W - line_w) / 2) + text_x
-                    
-                    # Shadow
-                    draw.text((start_x+4, start_y+4), line, font=font, fill="black")
-                    # Main
-                    hex_c = text_color.lstrip('#')
-                    rgb_c = tuple(int(hex_c[i:i+2], 16) for i in (0, 2, 4))
-                    draw.text((start_x, start_y), line, font=font, fill=rgb_c)
-                    start_y += line_h
+def render_dashboard():
+    st.title("AdGenius AI - Dashboard")
+    st.write("Review your past campaigns.")
+    
+    if st.button("+ Create New Ad", type="primary"):
+        st.session_state.page = "wizard_1"
+        st.rerun()
 
-                st.image(base_image, caption=f"Result (Seed: {seed_input})")
-                
-                # Download
-                buf = io.BytesIO()
-                base_image.save(buf, format="PNG")
-                st.download_button("⬇️ Download Image", buf.getvalue(), "t4_design.png", "image/png", type="primary")
+    if not st.session_state.history:
+        st.info("No campaigns yet. Start creating magic!")
+    else:
+        cols = st.columns(4)
+        for idx, project in enumerate(st.session_state.history):
+            with cols[idx % 4]:
+                with st.container(border=True):
+                    if project['thumbnail']:
+                        st.image(project['thumbnail'], use_container_width=True)
+                    st.subheader(project['topic'])
+                    st.caption(project['date'])
+
+def render_wizard_phase_1():
+    st.title("Phase 1: Project Scoping")
+    
+    with st.form("scoping_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            topic = st.text_input("Campaign Topic", value=st.session_state.scoping.get('topic', ''))
+        with col2:
+            ratio = st.selectbox("Aspect Ratio", ['1:1', '9:16', '16:9', '3:4'], index=0)
+
+        st.divider()
+
+        # Model
+        st.subheader("👤 Human Model")
+        c1, c2, c3 = st.columns(3)
+        model_role = c1.selectbox("Role", ['None', 'Main', 'Supporting'], key="mr")
+        model_count = c2.selectbox("Quantity", ['1', '2', '3', 'Group'], key="mc")
+        model_gender = c3.selectbox("Gender", ['Female', 'Male', 'Mixed'], key="mg")
+
+        # Product
+        st.subheader("📦 Product")
+        c1, c2 = st.columns(2)
+        product_role = c1.selectbox("Role", ['None', 'Main', 'Supporting'], key="pr")
+        product_count = c2.selectbox("Quantity", ['1', '2', '3', 'Group'], key="pc")
+
+        # Building
+        st.subheader("🏢 Architecture")
+        c1, c2 = st.columns(2)
+        building_role = c1.selectbox("Role", ['None', 'Main', 'Supporting'], key="br")
+        building_count = c2.selectbox("Quantity", ['1', '2', '3', 'Group'], key="bc")
+
+        # Fantasy
+        st.subheader("✨ Fantasy World")
+        c1, c2 = st.columns(2)
+        fantasy_role = c1.selectbox("Role", ['None', 'Main', 'Supporting'], key="fr")
+        fantasy_count = c2.selectbox("Quantity", ['1', '2', '3', 'Group'], key="fc")
+
+        # Text
+        st.subheader("📝 Text Layout")
+        c1, c2 = st.columns(2)
+        text_role = c1.selectbox("Role", ['None', 'Main', 'Supporting'], key="tr")
+        text_lines = c2.slider("Line Count", 1, 4, 1)
+        text_focus = st.selectbox("Primary Focus Line", [f"Line {i+1}" for i in range(text_lines)])
+
+        submitted = st.form_submit_button("Next Step →")
+        if submitted:
+            if not topic:
+                st.error("Please enter a topic.")
             else:
-                st.error("Error generating image. Try again.")
+                st.session_state.scoping = {
+                    'topic': topic, 'ratio': ratio,
+                    'modelRole': model_role, 'modelCount': model_count, 'modelGender': model_gender,
+                    'productRole': product_role, 'productCount': product_count,
+                    'buildingRole': building_role, 'buildingCount': building_count,
+                    'fantasyRole': fantasy_role, 'fantasyCount': fantasy_count,
+                    'textRole': text_role, 'textLineCount': text_lines, 
+                    'textPrimaryLineIdx': int(text_focus.split(' ')[1]) - 1
+                }
+                st.session_state.page = "wizard_2"
+                st.rerun()
+
+def render_wizard_phase_2():
+    st.title("Phase 2: Asset Upload")
+    scoping = st.session_state.scoping
+    assets = {}
+
+    st.info("Upload **one main reference image** per category for best results.")
+
+    if scoping['modelRole'] != 'None':
+        st.subheader("👤 Model Reference")
+        assets['model_img'] = get_image_bytes(st.file_uploader("Upload Model Ref", type=['png', 'jpg', 'jpeg'], key="u_model"))
+
+    if scoping['productRole'] != 'None':
+        st.subheader("📦 Product Reference")
+        assets['product_img'] = get_image_bytes(st.file_uploader("Upload Product Ref", type=['png', 'jpg', 'jpeg'], key="u_prod"))
+
+    if scoping['buildingRole'] != 'None':
+        st.subheader("🏢 Building Reference")
+        assets['building_img'] = get_image_bytes(st.file_uploader("Upload Building Ref", type=['png', 'jpg', 'jpeg'], key="u_build"))
+
+    if scoping['fantasyRole'] != 'None':
+        st.subheader("✨ Fantasy Reference")
+        assets['fantasy_img'] = get_image_bytes(st.file_uploader("Upload Fantasy Ref", type=['png', 'jpg', 'jpeg'], key="u_fant"))
+
+    st.subheader("🎨 Main Style Reference (Important)")
+    assets['main_ref'] = get_image_bytes(st.file_uploader("Upload Style/Vibe Ref", type=['png', 'jpg', 'jpeg'], key="u_main"))
+
+    st.subheader("Instructions")
+    assets['specialInstructions'] = st.text_area("Special Instructions (Optional)")
+
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("← Back"):
+            st.session_state.page = "wizard_1"
+            st.rerun()
+    with col2:
+        if st.button("Generate 4 Styles ✨", type="primary"):
+            st.session_state.assets = assets
+            st.session_state.page = "results"
+            st.rerun()
+
+def render_results():
+    st.title("Generation Results")
+    
+    if not api_key:
+        st.error("API Key missing. Please configure in sidebar.")
+        if st.button("Back"): st.session_state.page = "wizard_2"; st.rerun()
+        return
+
+    scoping = st.session_state.scoping
+    assets = st.session_state.assets
+
+    with st.status("Designing 4 Perspectives...", expanded=True) as status:
+        st.write("Generating Standard View...")
+        img_std = generate_image(scoping, assets, 'Standard')
+        st.write("Generating Creative View...")
+        img_cre = generate_image(scoping, assets, 'Uncommon')
+        st.write("Generating Distance View...")
+        img_dis = generate_image(scoping, assets, 'Distance')
+        st.write("Generating Abstract View...")
+        img_abs = generate_image(scoping, assets, 'Abstract')
+        status.update(label="Generation Complete!", state="complete", expanded=False)
+
+    # Save to history (Simple Mock)
+    thumbnail = img_std or img_cre or img_dis or img_abs
+    if thumbnail:
+        st.session_state.history.append({
+            'topic': scoping['topic'],
+            'date': 'Just Now',
+            'thumbnail': thumbnail
+        })
+
+    # Display Grid
+    c1, c2 = st.columns(2)
+    c3, c4 = st.columns(2)
+
+    with c1: 
+        st.subheader("Standard")
+        if img_std: st.image(img_std)
+    with c2: 
+        st.subheader("Creative")
+        if img_cre: st.image(img_cre)
+    with c3: 
+        st.subheader("Distance")
+        if img_dis: st.image(img_dis)
+    with c4: 
+        st.subheader("Abstract")
+        if img_abs: st.image(img_abs)
+
+    if st.button("Start New Project"):
+        st.session_state.page = "dashboard"
+        st.session_state.scoping = {}
+        st.session_state.assets = {}
+        st.rerun()
+
+# --- MAIN ROUTER ---
+
+if st.session_state.page == "dashboard":
+    render_dashboard()
+elif st.session_state.page == "wizard_1":
+    render_wizard_phase_1()
+elif st.session_state.page == "wizard_2":
+    render_wizard_phase_2()
+elif st.session_state.page == "results":
+    render_results()
